@@ -1,0 +1,254 @@
+#!/bin/bash
+
+#############
+# Functions #
+#############
+
+# Create dir if not exist
+function check_dir {
+	[ ! -e "$@" ] && mkdir -p "$@"
+}
+
+# Get path to directory (without name)
+function get_path {
+	path_dir_temp=$(echo "$@" | grep -Eo '^.*\/')
+	[ ! "$path_dir_temp" ] && path_dir_temp="."
+	echo "$path_dir_temp"
+}
+
+# Get name of directory
+function get_name {
+	echo "$@" | grep -Eo '[^\/]+$'
+}
+
+# Generate path-based id
+function get_id {
+	echo "$@" | md5sum | grep -Eo "^[a-z0-9]+"
+}
+
+# Logging
+function out {
+	[ $1 -le $verbosity ] && echo "$2"
+}
+
+##############
+# Initialize #
+##############
+
+# Find path to mounted tmpfs
+for tmpfs in /dev/shm /run/shm /tmp; do
+	# Check if $tmpfs is mouted
+	if mount | grep "$tmpfs" | grep -q "type tmpfs"; then
+		# Tmpfize temp directory
+		export tmpfize="$tmpfs"
+		break
+	fi
+done
+
+# Check for successfully found path to tmpfs
+[ ! "$tmpfize" ] && echo "[Error] Tmpfs not found..." && exit 1
+
+# Create required directories
+for dir in $tmpfize; do
+	check_dir "$dir"
+done
+
+# Print help page
+function show_help {
+echo "
+Usage: $0 [-hrvpu] [-t interval] [-e command] TARGET_DIR
+
+Technical:
+ -h		- Show this page.
+ -v		- Show info messages.
+
+Mount Settings:
+ TARGET_DIR	- Path or name of directory that will be moved to tmpfs.
+
+ -t interval	- Synchronize interval in seconds (default: 30, 0 to disable).
+		  
+ -p		- Do not delete directory from tmpfs after unmounting.
+		  
+ -r		- Mount read only. Any changes in a tmpfs copy will not be
+		  saved after unmounting. [DANGEROUS]
+
+Execute scripts:
+ -e command	- Execute this command after moving directory to tmpfs.
+		  When command is finished, directory will be moved back.
+
+Mount control:
+ -u		- Unmount directory.
+"
+}
+
+# Check parameters
+if [ $# -eq 0 ]; then
+	show_help
+	exit 1
+else
+	options="$@"
+fi
+
+# Defaults
+verbosity=0
+sync_interval=30
+
+# Parsing arguments
+while getopts ":t:e:rhvpu" opt; do
+	case $opt in
+		t) sync_interval="$OPTARG";;
+		e) execute="$OPTARG" ;;
+		r) read_only="true" ;;
+		v) verbosity=$((verbosity+1)) ;;
+		p) save_ram_copy="true" ;;
+		u) unmount="true" ;;
+			
+		*) show_help; exit ;;
+	esac
+done
+shift $((OPTIND-1))
+
+# Target directory
+target_dir=$(realpath -s "$1")
+target_dir_path=$(get_path "$target_dir")
+target_dir_name=$(get_name "$target_dir")
+target_dir_id=$(get_id "$target_dir")
+
+# Generating paths
+target_tmpfs="$tmpfize/tmpfize.$target_dir_id"
+backup_dir="$target_dir_path/.tmpfize.$target_dir_id.$target_dir_name"
+target_marker="$target_dir/.tmpfize"
+
+#############
+# Functions #
+#############
+
+# Unmount previously mounted directory
+if [ "$unmount" ]; then
+	if [ -e "$target_marker" ]; then
+		rm "$target_marker"
+
+		out 1 "Waiting until directory is unmouted..."
+		while [ -e "$backup_dir" ]; do sleep 1; done
+	else
+		out 0 "[Error] Directory $target_dir_name is not mounted!"
+	fi
+	
+	exit 0
+fi
+
+# Back sequence
+function back_sequence {
+	if [ "$1" -ge 5 ]; then
+		[ ! "$read_only" ] \
+			&& rsync -ax --delete "$target_tmpfs/" "$backup_dir"
+	fi
+
+	if [ "$1" -ge 4 ]; then
+		rm "$target_dir"
+		mv "$backup_dir" "$target_dir"
+	fi
+	
+	if [ "$1" -eq 3 ]; then
+		rsync -ax "$backup_dir/" "$target_dir"
+		rm -r "$backup_dir"
+	fi
+
+	if [ "$1" -ge 2 ]; then
+		[ ! "$save_ram_copy" ] && rm -r "$target_tmpfs"
+	fi
+
+	if [ "$1" -ge 1 ]; then
+		[ "$1" -lt 5 ] && exit 1
+	fi
+}
+
+# Background synchronization
+function background_sync {
+	count=0
+	while [ -e "$target_marker" ]; do
+		if [ ! "$read_only" ] && [ "$sync_interval" -gt 0 ]; then
+			if [ "$count" -lt "$sync_interval" ]; then
+				count=$((count+1))
+			else
+				rsync -ax --delete \
+					--exclude $(get_name "$target_marker") \
+					"$target_dir/" "$backup_dir"
+				count=0
+			fi
+		fi
+		sleep 1
+	done
+	
+	back_sequence 5
+}
+
+# Run process and keep tmpfize alive until it finishes
+function process_watcher {
+	if [ "$execute" ]; then
+		out 1 "[Info] Starting command ($execute)"
+		$execute > /dev/null 2>&1
+		[ -e "$target_marker" ] && rm "$target_marker"
+	fi
+}
+
+###############################
+# Moving $target_dir to tmpfs #
+###############################
+
+# Level 1: Check if directory is already mouted
+out 1 "[Info] Checking if $target_dir_name is already mounted"
+if [ -e "$target_marker" ]; then
+	out 0 "[Error] $target_dir is already mounted!"
+	
+	back_sequence 1
+fi
+
+# Restore backup if exists and create if not
+out 1 "[Info] Checking if backup of $target_dir_name exists"
+if [ -e "$backup_dir" ]; then
+	out 0 "[Warning] Backup of $target_dir_name is found. Restoring..."
+
+	if [ ! -d "$target_dir" ]; then
+		rm "$target_dir"
+		mv "$backup_dir" "$target_dir"
+	else
+		rsync -ax "$backup_dir/" "$target_dir" \
+			&& rm -r "$backup_dir"
+	fi
+fi
+check_dir "$target_dir"
+
+# Level 2: Copying files from target directory to tmpfs
+out 1 "[Info] Copying files from $target_dir_name to tmpfs"
+if ! rsync -ax --delete "$target_dir/" "$target_tmpfs"; then
+	out 0 "[Error] Can't copy $target_dir_name to tmpfs!"
+	
+	back_sequence 2
+fi
+
+# Level 3: Moving target directory from the way
+out 1 "[Info] Renaming $target_dir_name to $(get_name $backup_dir)"
+if ! mv "$target_dir" "$backup_dir"; then
+	out 0 "[Error] Can't move $target_dir_name to $(get_name $backup_dir)"
+	
+	back_sequence 3
+fi
+
+# Level 4: Mounting tmpfs into target directory
+out 1 "[Info] Creating symbolic link from $target_dir_name to tmpfs"
+if ! ln -s "$target_tmpfs" "$target_dir"; then
+	out 0 "[Error] Can't create symlink: $target_dir"
+	
+	back_sequence 4
+fi
+
+# Level 5: Run periodic synchronization in background
+echo "You can unmount current directory by removing this file" > "$target_marker"
+background_sync &
+out 1 "[Info] Background synchronization started (PID=$!)"
+
+# Run process (if set)
+process_watcher &
+
+exit 0

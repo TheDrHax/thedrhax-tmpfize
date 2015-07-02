@@ -1,0 +1,8 @@
+Package: thedrhax-tmpfize
+Version: 1.0-1
+Provides: tmpfize
+Maintainer: Дмитрий Карих (TheDrHax) <the.dr.hax@gmail.com>
+Architecture: all
+Section: misc
+Description: Copy any directory to RAM (tmpfs) and automatically synchronize it with HDD
+Depends: rsync, realpath
