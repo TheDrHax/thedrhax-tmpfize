@@ -56,7 +56,7 @@ done
 # Print help page
 function show_help {
 echo "
-Usage: $0 [-hrvpu] [-t interval] [-e command] TARGET_DIR
+Usage: $0 [-hrvpus] [-t interval] [-e command] TARGET_DIR
 
 Technical:
  -h		- Show this page.
@@ -71,6 +71,9 @@ Mount Settings:
 		  
  -r		- Mount read only. Any changes in a tmpfs copy will not be
 		  saved after unmounting. [DANGEROUS]
+
+ -s		- Send SIGSTOP and SIGCONT to all processes which are using
+		  the target directory.
 
 Execute scripts:
  -e command	- Execute this command after moving directory to tmpfs.
@@ -94,7 +97,7 @@ verbosity=0
 sync_interval=30
 
 # Parsing arguments
-while getopts ":t:e:rhvpu" opt; do
+while getopts ":t:e:rhvpus" opt; do
 	case $opt in
 		t) sync_interval="$OPTARG";;
 		e) execute="$OPTARG" ;;
@@ -102,6 +105,7 @@ while getopts ":t:e:rhvpu" opt; do
 		v) verbosity=$((verbosity+1)) ;;
 		p) save_ram_copy="true" ;;
 		u) unmount="true" ;;
+		s) send_signals="true" ;;
 			
 		*) show_help; exit ;;
 	esac
@@ -140,6 +144,7 @@ fi
 # Back sequence
 function back_sequence {
 	if [ "$1" -ge 5 ]; then
+		send_signal STOP
 		[ ! "$read_only" ] \
 			&& rsync -ax --delete "$target_tmpfs/" "$backup_dir"
 	fi
@@ -156,6 +161,7 @@ function back_sequence {
 
 	if [ "$1" -ge 2 ]; then
 		[ ! "$save_ram_copy" ] && rm -r "$target_tmpfs"
+		send_signal CONT
 	fi
 
 	if [ "$1" -ge 1 ]; then
@@ -192,6 +198,27 @@ function process_watcher {
 	fi
 }
 
+# Send signals to processes which are using target directory
+function send_signal {
+	SIG="$1"
+
+	[ ! "$send_signals" ] && return 0
+	
+	# Looking for PIDs with fuser
+	export PID_list="$PID_list $(fuser "$target_dir" 2>&1 \
+		| sed -e 's/.*\: //g' -e 's/[a-z]*//g')"
+	
+	# Send signal to each process
+	for PID in $PID_list; do
+		kill -SIG$SIG $PID > /dev/null 2>&1
+		
+		# Delete dead processes from list
+		if [ $? == 1 ]; then
+			export PID_list=$(echo "$PID_list" | sed "s/$PID//g")
+		fi
+	done
+}
+
 ###############################
 # Moving $target_dir to tmpfs #
 ###############################
@@ -221,6 +248,7 @@ check_dir "$target_dir"
 
 # Level 2: Copying files from target directory to tmpfs
 out 1 "[Info] Copying files from $target_dir_name to tmpfs"
+send_signal STOP
 if ! rsync -ax --delete "$target_dir/" "$target_tmpfs"; then
 	out 0 "[Error] Can't copy $target_dir_name to tmpfs!"
 	
@@ -245,6 +273,7 @@ fi
 
 # Level 5: Run periodic synchronization in background
 echo "You can unmount current directory by removing this file" > "$target_marker"
+send_signal CONT
 background_sync &
 out 1 "[Info] Background synchronization started (PID=$!)"
 
