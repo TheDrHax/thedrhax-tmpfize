@@ -246,6 +246,15 @@ if [ -e "$backup_dir" ]; then
 fi
 check_dir "$target_dir"
 
+# Check free space in tmpfs
+tmpfs_avail_space=$(df --output=avail "$tmpfize" | grep -Eo "[0-9]*")
+target_dir_size=$(du -s "$target_dir" | awk '{print $1}' || echo 0)
+
+if [ $target_dir_size -ge $tmpfs_avail_space ]; then
+	out 0 "[Error] Not enough space in tmpfs!"
+	exit 1
+fi
+
 # Level 2: Copying files from target directory to tmpfs
 out 1 "[Info] Copying files from $target_dir_name to tmpfs"
 send_signal STOP
