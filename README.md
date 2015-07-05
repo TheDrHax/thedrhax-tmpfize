@@ -63,6 +63,9 @@ Mount Settings:
  -r		        - Mount read only. Any changes in a tmpfs copy will not be
 		          saved after unmounting. [DANGEROUS]
 
+ -s				- Send SIGSTOP and SIGCONT to all processes which are using
+				  the target directory.
+
 Execute scripts:
  -e command	    - Execute this command after moving directory to tmpfs.
 	              When command is finished, directory will be moved back.
