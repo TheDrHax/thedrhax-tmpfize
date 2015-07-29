@@ -35,13 +35,17 @@ function out {
 # Initialize #
 ##############
 
-# Find path to mounted tmpfs
-for tmpfs in /dev/shm /run/shm /tmp; do
-	# Check if $tmpfs is mouted
-	if mount | grep "$tmpfs" | grep -q "type tmpfs"; then
-		# Tmpfize temp directory
-		export tmpfize="$tmpfs"
-		break
+# Find path to the biggest mounted tmpfs
+tmpfs_mounts=$(mount | grep tmpfs | awk '{print $3}')
+tmpfs_max_size=0
+for tmpfs in $tmpfs_mounts; do
+	size=$(df "$tmpfs" | grep "$tmpfs" | awk '{print $4}')
+	if [ $size -gt $tmpfs_max_size ] && \
+	   touch "$tmpfs/tmpfize-test" > /dev/null 2>&1 && \
+	   rm "$tmpfs/tmpfize-test" > /dev/null 2>&1
+	then
+		tmpfs_max_size=$size
+		tmpfize=$tmpfs
 	fi
 done
 
