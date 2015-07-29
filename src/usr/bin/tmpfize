@@ -4,26 +4,9 @@
 # Functions #
 #############
 
-# Create dir if not exist
-function check_dir {
-	[ ! -e "$@" ] && mkdir -p "$@"
-}
-
-# Get path to directory (without name)
-function get_path {
-	path_dir_temp=$(echo "$@" | grep -Eo '^.*\/')
-	[ ! "$path_dir_temp" ] && path_dir_temp="."
-	echo "$path_dir_temp"
-}
-
 # Get name of directory
 function get_name {
 	echo "$@" | grep -Eo '[^\/]+$'
-}
-
-# Generate path-based id
-function get_id {
-	echo "$@" | md5sum | grep -Eo "^[a-z0-9]+"
 }
 
 # Logging
@@ -111,10 +94,10 @@ done
 out 1 "[Info] Using tmpfs mounted in $tmpfize (size: $tmpfs_max_size KB)"
 
 # Target directory
-target_dir=$(realpath -s "$1")
-target_dir_path=$(get_path "$target_dir")
-target_dir_name=$(get_name "$target_dir")
-target_dir_id=$(get_id "$target_dir")
+target_dir=$(realpath -s "$1") # /path/to/dir
+target_dir_path=$(echo "$target_dir" | grep -Eo '^.*\/') # /path/to/
+target_dir_name=$(get_name "$target_dir") # dir
+target_dir_id=$(echo "$target_dir" | md5sum | grep -Eo "^[a-z0-9]+")
 
 # Generating paths
 target_tmpfs="$tmpfize/tmpfize.$target_dir_id"
@@ -242,7 +225,7 @@ if [ -e "$backup_dir" ]; then
 			&& rm -r "$backup_dir"
 	fi
 fi
-check_dir "$target_dir"
+[ ! -e "$target_dir" ] && mkdir -p "$target_dir"
 
 # Check free space in tmpfs
 target_dir_size=$(du -s "$target_dir" | awk '{print $1}' || echo 0)
