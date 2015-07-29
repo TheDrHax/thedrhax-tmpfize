@@ -96,7 +96,7 @@ shift $((OPTIND-1))
 tmpfs_mounts=$(mount | grep tmpfs | awk '{print $3}')
 tmpfs_max_size=0
 for tmpfs in $tmpfs_mounts; do
-	size=$(df "$tmpfs" | grep "$tmpfs" | awk '{print $4}')
+	size=$(df --output=avail "$tmpfs" | grep -Eo "[0-9]*")
 	if [ $size -gt $tmpfs_max_size ] && \
 	   touch "$tmpfs/tmpfize-test" > /dev/null 2>&1 && \
 	   rm "$tmpfs/tmpfize-test" > /dev/null 2>&1
@@ -245,10 +245,9 @@ fi
 check_dir "$target_dir"
 
 # Check free space in tmpfs
-tmpfs_avail_space=$(df --output=avail "$tmpfize" | grep -Eo "[0-9]*")
 target_dir_size=$(du -s "$target_dir" | awk '{print $1}' || echo 0)
 
-if [ $target_dir_size -ge $tmpfs_avail_space ]; then
+if [ $target_dir_size -ge $tmpfs_max_size ]; then
 	out 0 "[Error] Not enough space in tmpfs!"
 	exit 1
 fi
