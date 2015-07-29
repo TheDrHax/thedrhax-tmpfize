@@ -52,11 +52,6 @@ done
 # Check for successfully found path to tmpfs
 [ ! "$tmpfize" ] && echo "[Error] Tmpfs not found..." && exit 1
 
-# Create required directories
-for dir in $tmpfize; do
-	check_dir "$dir"
-done
-
 # Print help page
 function show_help {
 echo "
