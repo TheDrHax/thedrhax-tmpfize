@@ -31,27 +31,6 @@ function out {
 	[ $1 -le $verbosity ] && echo "$2"
 }
 
-##############
-# Initialize #
-##############
-
-# Find path to the biggest mounted tmpfs
-tmpfs_mounts=$(mount | grep tmpfs | awk '{print $3}')
-tmpfs_max_size=0
-for tmpfs in $tmpfs_mounts; do
-	size=$(df "$tmpfs" | grep "$tmpfs" | awk '{print $4}')
-	if [ $size -gt $tmpfs_max_size ] && \
-	   touch "$tmpfs/tmpfize-test" > /dev/null 2>&1 && \
-	   rm "$tmpfs/tmpfize-test" > /dev/null 2>&1
-	then
-		tmpfs_max_size=$size
-		tmpfize=$tmpfs
-	fi
-done
-
-# Check for successfully found path to tmpfs
-[ ! "$tmpfize" ] && echo "[Error] Tmpfs not found..." && exit 1
-
 # Print help page
 function show_help {
 echo "
@@ -110,6 +89,27 @@ while getopts ":t:e:rhvpus" opt; do
 	esac
 done
 shift $((OPTIND-1))
+
+##############
+# Initialize #
+##############
+
+# Find path to the biggest mounted tmpfs
+tmpfs_mounts=$(mount | grep tmpfs | awk '{print $3}')
+tmpfs_max_size=0
+for tmpfs in $tmpfs_mounts; do
+	size=$(df "$tmpfs" | grep "$tmpfs" | awk '{print $4}')
+	if [ $size -gt $tmpfs_max_size ] && \
+	   touch "$tmpfs/tmpfize-test" > /dev/null 2>&1 && \
+	   rm "$tmpfs/tmpfize-test" > /dev/null 2>&1
+	then
+		tmpfs_max_size=$size
+		tmpfize=$tmpfs
+	fi
+done
+
+# Check for successfully found path to tmpfs
+[ ! "$tmpfize" ] && echo "[Error] Tmpfs not found..." && exit 1
 
 # Target directory
 target_dir=$(realpath -s "$1")
