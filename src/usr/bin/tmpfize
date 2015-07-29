@@ -109,7 +109,8 @@ for tmpfs in $tmpfs_mounts; do
 done
 
 # Check for successfully found path to tmpfs
-[ ! "$tmpfize" ] && echo "[Error] Tmpfs not found..." && exit 1
+[ ! "$tmpfize" ] && out 0 "[Error] Tmpfs not found..." && exit 1
+out 1 "[Info] Using tmpfs mounted in $tmpfize (size: $tmpfs_max_size KB)"
 
 # Target directory
 target_dir=$(realpath -s "$1")
