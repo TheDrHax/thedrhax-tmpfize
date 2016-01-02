@@ -17,7 +17,7 @@ function out {
 # Print help page
 function show_help {
 echo "
-Usage: $0 [-hrvpus] [-t interval] [-e command] TARGET_DIR
+Usage: $0 [-hrvpus] [-t interval] [-e command] TARGET_DIR[.tar.gz]
 
 Technical:
  -h		- Show this page.
@@ -95,6 +95,13 @@ out 1 "[Info] Using tmpfs mounted in $tmpfize (size: $tmpfs_max_size KB)"
 
 # Target directory
 target_dir=$(realpath -s "$1") # /path/to/dir
+
+# Check for archive extension
+if echo "$target_dir" | grep -qE ".tar.gz$"; then
+	archive="true"
+	target_dir=$(echo "$target_dir" | sed 's/.tar.gz$//g')
+fi
+
 target_dir_path=$(echo "$target_dir" | grep -Eo '^.*\/') # /path/to/
 target_dir_name=$(get_name "$target_dir") # dir
 target_dir_id=$(echo "$target_dir" | md5sum | grep -Eo "^[a-z0-9]+")
@@ -114,7 +121,9 @@ if [ "$unmount" ]; then
 		rm "$target_marker"
 
 		out 1 "Waiting until directory is unmouted..."
-		while [ -e "$backup_dir" ]; do sleep 1; done
+		while [ -e "$backup_dir" ] || [ -e "$target_marker.packing" ]; do
+			sleep 1;
+		done
 	else
 		out 0 "[Error] Directory $target_dir_name is not mounted!"
 	fi
@@ -142,10 +151,21 @@ function back_sequence {
 
 	if [ "$1" -ge 2 ]; then
 		[ ! "$save_ram_copy" ] && rm -r "$target_tmpfs"
+		
 		send_signal CONT
 	fi
 
 	if [ "$1" -ge 1 ]; then
+		if [ "$archive" == "true" ]; then
+			touch "$target_marker.packing"
+			tar \
+				-czf "$target_dir.tar.gz"\
+				-C "$target_dir_path" \
+				--exclude=".tmpfize*" \
+				"$target_dir_name"
+			rm -r "$target_dir"
+		fi
+	
 		[ "$1" -lt 5 ] && exit 1
 	fi
 }
@@ -235,12 +255,26 @@ if [ $target_dir_size -ge $tmpfs_max_size ]; then
 	exit 1
 fi
 
+# Unpack archive if passed as main argument
+if [ "$archive" == "true" ]; then
+	if [ -e "$target_dir.tar.gz" ]; then
+		out 1 "[Info] Unpacking archive $target_dir_name.tar.gz"
+		if ! tar -xzf "$target_dir.tar.gz" -C "$target_dir_path"; then
+			out 0 "[Error] Can't unpack archive $target_dir_name.tar.gz!"
+
+			back_sequence 2
+		fi
+	else
+		out 1 "[Info] Archive $target_dir_name.tar.gz not found. It will be created after unmount"
+	fi
+fi
+
 # Level 2: Copying files from target directory to tmpfs
 out 1 "[Info] Copying files from $target_dir_name to tmpfs"
 send_signal STOP
 if ! rsync -ax --delete "$target_dir/" "$target_tmpfs"; then
 	out 0 "[Error] Can't copy $target_dir_name to tmpfs!"
-	
+
 	back_sequence 2
 fi
 
