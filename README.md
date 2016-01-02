@@ -43,7 +43,7 @@ sudo apt-get install thedrhax-tmpfize
 Command accepts one argument (path of directory that should be moved to tmpfs).
 
 ```
-tmpfize [-hrvpu] [-t interval] [-e command] TARGET_DIR
+tmpfize [-hrvpu] [-t interval] [-e command] TARGET_DIR[.tar.gz]
 ```
 
 Options:
@@ -72,4 +72,36 @@ Execute scripts:
 
 Mount control:
  -u		        - Unmount directory.
+```
+
+### Examples
+
+* Mount and unmount existing directory
+```bash
+# mount
+tmpfize directory_name
+
+# unmount
+tmpfize -u directory_name
+```
+
+* Mount directory with disabled synchronization (directory will be synced after unmount)
+
+```bash
+tmpfize -t 0 directory_name
+```
+
+* Mount read-only directory (all changes will be lost after unmount)
+```bash
+tmpfize -r directory_name
+```
+
+* Start a custom script after mounting
+```bash
+tmpfize -e script_name directory_name
+```
+
+* Mounting a .tar.gz archive (since v1.3.0): archive will be unpacked to tmpfs and packed back after unmount
+```bash
+tmpfize directory_name.tar.gz
 ```
