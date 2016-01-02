@@ -156,7 +156,7 @@ function back_sequence {
 	fi
 
 	if [ "$1" -ge 1 ]; then
-		if [ "$archive" == "true" ]; then
+		if [ "$archive" == "true" ] && [ "$read_only" != "true" ]; then
 			touch "$target_marker.packing"
 			tar \
 				-czf "$target_dir.tar.gz"\
