@@ -159,9 +159,7 @@ function back_sequence {
 		[ ! "$save_ram_copy" ] && rm -r "$target_tmpfs"
 		
 		send_signal CONT
-	fi
-
-	if [ "$1" -ge 1 ]; then
+		
 		if [ "$archive" == "true" ] && [ "$read_only" != "true" ]; then
 			touch "$target_marker.packing"
 			tar \
@@ -173,7 +171,9 @@ function back_sequence {
 			
 			[ "$save_disk_copy" ] || rm -r "$target_dir"
 		fi
-	
+	fi
+
+	if [ "$1" -ge 1 ]; then
 		[ "$1" -lt 5 ] && exit 1
 	fi
 }
@@ -263,6 +263,8 @@ if [ $target_dir_size -ge $tmpfs_max_size ]; then
 	exit 1
 fi
 
+# Level 2: Copying files from target directory to tmpfs
+
 # Unpack archive if passed as main argument
 if [ "$archive" == "true" ]; then
 	if [ -e "$target_dir.tar.gz" ]; then
@@ -277,7 +279,6 @@ if [ "$archive" == "true" ]; then
 	fi
 fi
 
-# Level 2: Copying files from target directory to tmpfs
 out 1 "[Info] Copying files from $target_dir_name to tmpfs"
 send_signal STOP
 if ! rsync -ax --delete "$target_dir/" "$target_tmpfs"; then
