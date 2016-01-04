@@ -29,6 +29,7 @@ Mount Settings:
  -t interval	- Synchronize interval in seconds (default: 30, 0 to disable).
 		  
  -p		- Do not delete directory from tmpfs after unmounting.
+ -pp		- Similar to -p and do not delete files unpacked from archive.
 		  
  -r		- Mount read only. Any changes in a tmpfs copy will not be
 		  saved after unmounting. [DANGEROUS]
@@ -62,7 +63,12 @@ while getopts ":t:e:rhvpus" opt; do
 		e) execute="$OPTARG" ;;
 		r) read_only="true" ;;
 		v) verbosity=$((verbosity+1)) ;;
-		p) save_ram_copy="true" ;;
+		p) if [ "$save_ram_copy" ]; then
+			save_disk_copy="true"
+		   else
+			save_ram_copy="true"
+		   fi
+		   ;;
 		u) unmount="true" ;;
 		s) send_signals="true" ;;
 			
@@ -163,7 +169,9 @@ function back_sequence {
 				-C "$target_dir_path" \
 				--exclude=".tmpfize*" \
 				"$target_dir_name"
-			rm -r "$target_dir"
+			rm "$target_marker.packing"
+			
+			[ "$save_disk_copy" ] || rm -r "$target_dir"
 		fi
 	
 		[ "$1" -lt 5 ] && exit 1
