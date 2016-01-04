@@ -259,7 +259,7 @@ fi
 if [ "$archive" == "true" ]; then
 	if [ -e "$target_dir.tar.gz" ]; then
 		out 1 "[Info] Unpacking archive $target_dir_name.tar.gz"
-		if ! tar -xzf "$target_dir.tar.gz" -C "$target_dir_path"; then
+		if ! tar --keep-newer-files -xzf "$target_dir.tar.gz" -C "$target_dir_path"; then
 			out 0 "[Error] Can't unpack archive $target_dir_name.tar.gz!"
 
 			back_sequence 2
