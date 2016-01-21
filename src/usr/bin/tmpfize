@@ -17,7 +17,7 @@ function out {
 # Print help page
 function show_help {
 echo "
-Usage: $0 [-hrvpu] [-t interval] [-e command] TARGET_DIR[.tar.gz]
+Usage: $0 [-hrvpu] [-t interval] TARGET_DIR[.tar.gz] -- [COMMAND]
 
 Technical:
  -h		- Show this page.
@@ -35,7 +35,7 @@ Mount Settings:
 		  saved after unmounting. [DANGEROUS]
 
 Execute scripts:
- -e command	- Execute this command after moving directory to tmpfs.
+ COMMAND	- Execute this command after moving directory to tmpfs.
 		  When command is finished, directory will be moved back.
 
 Mount control:
@@ -54,10 +54,9 @@ verbosity=0
 sync_interval=30
 
 # Parsing arguments
-while getopts ":t:e:rhvpu" opt; do
+while getopts ":t:rhvpu" opt; do
 	case $opt in
 		t) sync_interval="$OPTARG";;
-		e) execute="$OPTARG" ;;
 		r) read_only="true" ;;
 		v) verbosity=$((verbosity+1)) ;;
 		p) if [ "$save_ram_copy" ]; then
@@ -72,6 +71,17 @@ while getopts ":t:e:rhvpu" opt; do
 	esac
 done
 shift $((OPTIND-1))
+
+while [ "$1" ]; do
+	if [ "$1" == "--" ]; then
+		shift
+		execute="$@"
+		break
+	fi
+
+	target_dir_list=(${target_dir_list[@]} $1)
+	shift
+done
 
 ##############
 # Initialize #
@@ -96,7 +106,7 @@ done
 out 1 "[Info] Using tmpfs mounted in $tmpfize (size: $tmpfs_max_size KB)"
 
 # Target directory
-target_dir=$(realpath -s "$1") # /path/to/dir
+target_dir=$(realpath -s "$target_dir_list") # /path/to/dir
 
 # Check for archive extension
 if echo "$target_dir" | grep -qE ".tar.gz$"; then
