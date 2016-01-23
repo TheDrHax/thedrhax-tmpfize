@@ -43,7 +43,7 @@ sudo apt-get install thedrhax-tmpfize
 Command accepts one argument (path of directory that should be moved to tmpfs).
 
 ```
-tmpfize [-hrvpu] [-t interval] TARGET_DIR[.tar.gz] -- [COMMAND]
+tmpfize [-hrvpu] [-t interval] SOURCE_DIR[.tar.gz] -- [COMMAND]
 ```
 
 Options:
@@ -54,7 +54,7 @@ Technical:
  -v		        - Show info messages.
 
 Mount Settings:
- TARGET_DIR	    - Path or name of directory that will be moved to tmpfs.
+ SOURCE_DIR	    - Path or name of directory that will be moved to tmpfs.
 
  -t interval	- Synchronize interval in seconds (default: 30, 0 to disable).
 		  
