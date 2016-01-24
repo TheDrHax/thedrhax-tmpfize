@@ -36,7 +36,7 @@ function iterate {
 # Print help page
 function show_help {
 echo "
-Usage: $0 [-hrvpu] [-t interval] SOURCE_DIR[.tar.gz] -- [COMMAND]
+Usage: $0 [-hrvpu] [-t interval] SOURCE_DIR[.tar.gz] ... -- [COMMAND]
 
 Technical:
  -h		- Show this page.
@@ -144,49 +144,48 @@ marker=($(iterate '{1}/.tmpfize' source))
 
 # Unmount previously mounted directory
 if [ "$mode_unmount" ]; then
-	if [ -e "$marker" ]; then
-		rm "$marker"
-		log 1 "Waiting until directory is unmouted..."
-		while [ -e "$backup" ] || [ -e "$marker.packing" ]; do
-			sleep 1;
-		done
-	else
-		log 0 "[Error] Directory $source_name is not mounted!"
-	fi
-	
+    iterate '$([ -e "{1}" ] && rm "{1}")' marker > /dev/null # remove all markers
+    echo "Waiting until all directories are unmounted..."
+    markers=($(iterate '{1}\ {2}.packing' backup marker))
+    while [ "$(iterate '$([ -e {1} ] && echo wait)' markers)" ]; do sleep 1; done
 	exit 0
 fi
 
 # Back sequence
 function back_sequence {
 	if [ "$1" -ge 5 ]; then
-		[ ! "$pref_read_only" ] \
-			&& rsync -ax --delete "$target/" "$backup"
+	    # Synchronize files from tmpfs with backup
+	    [ ! "$pref_read_only" ] && iterate '$(rsync -ax --delete "{1}/" "{2}")' target backup > /dev/null
 	fi
 
 	if [ "$1" -ge 4 ]; then
-		rm "$source"
-		mv "$backup" "$source"
+	    # Replace link with backup
+	    iterate '$(rm {1}; mv {2} {1})' source backup > /dev/null
 	fi
 	
 	if [ "$1" -eq 3 ]; then
-		rsync -ax "$backup/" "$source"
-		rm -r "$backup"
+	    # Synchronize files from backup and remove them
+	    iterate '$(rsync -ax "{1}/" "{2}"; rm -r "{1}")' backup source > /dev/null
 	fi
 
 	if [ "$1" -ge 2 ]; then
-		[ ! "$pref_save_in_ram" ] && rm -r "$target"
+	    # Remove files from tmpfs if set
+		[ ! "$pref_save_in_ram" ] && iterate '$(rm -r "{1}")' target > /dev/null
 		
-		if [ "$pref_archive" == "true" ] && [ "$pref_read_only" != "true" ]; then
-			touch "$marker.packing"
-			tar \
-				-czf "$source.tar.gz"\
-				-C "$source_path" \
-				--exclude=".tmpfize*" \
-				"$source_name"
-			rm "$marker.packing"
-			
-			[ "$pref_save_on_disk" ] || rm -r "$source"
+		if [ "$pref_read_only" != "true" ]; then
+		    # Create marker
+		    iterate '$([ "{1}" == "true" ] && touch "{2}.packing")' pref_archive marker > /dev/null
+		    
+		    # Update archives
+		    iterate '$([ "{1}" == "true" ] && tar -czf "{2}.tar.gz" -C "{3}" --exclude=".tmpfize*" "{4}")' \
+		        pref_archive source source_path source_name > /dev/null
+		    
+		    # Remove marker
+		    iterate '$([ "{1}" == "true" ] && rm "{2}.packing")' pref_archive marker > /dev/null
+		    
+		    # Remove files from disk if set
+		    [ ! "$pref_save_on_disk" ] && iterate '$([ "{1}" == "true" ] && rm -r "{2}")'\
+		        pref_archive source > /dev/null
 		fi
 	fi
 
@@ -196,14 +195,13 @@ function back_sequence {
 # Background synchronization
 function background_sync {
 	count=0
-	while [ -e "$marker" ]; do
+	while [ ! "$(iterate '$([ -e '{1}' ] || echo stop)' marker)" ]; do # while all markers are existing
 		if [ ! "$pref_read_only" ] && [ "$pref_sync_delay" -gt 0 ]; then
 			if [ "$count" -lt "$pref_sync_delay" ]; then
 				count=$((count+1))
 			else
-				rsync -ax --delete \
-					--exclude $(get_name "$marker") \
-					"$source/" "$backup"
+			    # Synchronize files from tmpfs with backup
+			    iterate '$(rsync -ax --delete --exclude $(get_name "{1}") "{2}/" "{3}")' marker source backup > /dev/null
 				count=0
 			fi
 		fi
@@ -218,7 +216,7 @@ function process_watcher {
 	if [ "$pref_execute" ]; then
 		log 1 "[Info] Starting command ($pref_execute)"
 		$pref_execute > /dev/null 2>&1
-		[ -e "$marker" ] && rm "$marker"
+		iterate '$([ -e "{1}" ] && rm "{1}")' marker > /dev/null # remove all markers
 	fi
 }
 
@@ -227,29 +225,38 @@ function process_watcher {
 ###############################
 
 # Level 1: Check if directory is already mouted
-log 1 "[Info] Checking if $source_name is already mounted"
-if [ -e "$marker" ]; then
-	log 0 "[Error] $source is already mounted!"
-	back_sequence 1
+log 1 "[Info] Checking if directory is already mounted"
+if [ "$(iterate '$([ -e {1} ] && echo true)' marker)" ]; then
+    log 0 "[Error] Directory is already mouted!"
+    back_sequence 1
 fi
 
 # Restore backup if exists and create if not
-log 1 "[Info] Checking if backup of $source_name exists"
-if [ -e "$backup" ]; then
-	log 0 "[Warning] Backup of $source_name is found. Restoring..."
+log 1 "[Info] Checking for backup"
+function restore {
+    if [ -e "$1" ]; then
+	    log 0 "[Warning] Backup of $(get_name $2) is found. Restoring..."
 
-	if [ ! -d "$source" ]; then
-		rm "$source"
-		mv "$backup" "$source"
-	else
-		rsync -ax "$backup/" "$source" \
-			&& rm -r "$backup"
-	fi
-fi
-[ ! -e "$source" ] && mkdir -p "$source"
+	    if [ ! -d "$2" ]; then
+		    [ -e "$2" ] && rm "$2"
+		    mv "$1" "$2"
+	    else
+		    rsync -ax "$1/" "$2" \
+			    && rm -r "$1"
+	    fi
+    fi
+}
+iterate '$(restore "{1}" "{2}")' backup source > /dev/null
+
+# Create source directory if it doesn't exist
+iterate '$([ ! -e "{1}" ] && mkdir -p "{1}")' source > /dev/null
 
 # Check free space in tmpfs
-source_size=$(du -s "$source" | awk '{print $1}' || echo 0)
+source_size=0
+for i in ${source[@]}; do 
+    size=$(du -s "$i" | awk '{print $1}' || echo 0)
+    source_size=$((source_size+size))
+done
 if [ $source_size -ge $tmpfs_max_size ]; then
 	log 0 "[Error] Not enough space in tmpfs!"
 	exit 1
@@ -258,41 +265,43 @@ fi
 # Level 2: Copying files from target directory to tmpfs
 
 # Unpack archive if passed as main argument
-if [ "$pref_archive" == "true" ]; then
-	if [ -e "$source.tar.gz" ]; then
-		log 1 "[Info] Unpacking archive $source_name.tar.gz"
-		if ! tar --keep-newer-files -xzf "$source.tar.gz" -C "$source_path"; then
-			log 0 "[Error] Can't unpack archive $source_name.tar.gz!"
+function unpack {
+    if [ "$1" == "true" ]; then
+	    if [ -e "$2.tar.gz" ]; then
+		    log 1 "[Info] Unpacking archive $3.tar.gz"
+		    if ! tar --keep-newer-files -xzf "$2.tar.gz" -C "$4"; then
+			    log 0 "[Error] Can't unpack archive $3.tar.gz!"
+			    back_sequence 2
+		    fi
+	    else
+		    log 1 "[Info] Archive $3.tar.gz not found. It will be created after unmount"
+	    fi
+    fi
+}
+iterate '$(unpack "{1}" "{2}" "{3}" "{4}")' pref_archive source source_name source_path > /dev/null
 
-			back_sequence 2
-		fi
-	else
-		log 1 "[Info] Archive $source_name.tar.gz not found. It will be created after unmount"
-	fi
-fi
-
-log 1 "[Info] Copying files from $source_name to tmpfs"
-if ! rsync -ax --delete "$source/" "$target"; then
-	log 0 "[Error] Can't copy $source_name to tmpfs!"
-	back_sequence 2
+log 1 "[Info] Copying files to tmpfs"
+if [ "$(iterate '$(rsync -ax --delete {1}/ {2} || echo false)' source target)" ]; then
+    log 0 "[Error] Can not copy directory to tmpfs!"
+    back_sequence 2
 fi
 
 # Level 3: Moving target directory from the way
-log 1 "[Info] Renaming $source_name to $(get_name $backup)"
-if ! mv "$source" "$backup"; then
-	log 0 "[Error] Can't move $source_name to $(get_name $backup)"
-	back_sequence 3
+log 1 "[Info] Renaming source directory"
+if [ "$(iterate '$(mv {1} {2} || echo false)' source backup)" ]; then
+    log 0 "[Error] Can not rename source directory"
+    back_sequence 3
 fi
 
 # Level 4: Mounting tmpfs into target directory
-log 1 "[Info] Creating symbolic link from $source_name to tmpfs"
-if ! ln -s "$target" "$source"; then
-	log 0 "[Error] Can't create symlink: $source"
-	back_sequence 4
+log 1 "[Info] Creating symbolic link"
+if [ "$(iterate '$(ln -s {1} {2} || echo false)' target source)" ]; then
+    log 0 "[Error] Can not create symlink"
+    back_sequence 4
 fi
 
 # Level 5: Run periodic synchronization in background
-echo "You can unmount current directory by removing this file" > "$marker"
+iterate '$(echo "Remove me to unmount" > "{1}")' marker > /dev/null
 background_sync &
 log 1 "[Info] Background synchronization started (PID=$!)"
 
