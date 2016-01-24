@@ -238,7 +238,7 @@ function restore {
 	    log 0 "[Warning] Backup of $(get_name $2) is found. Restoring..."
 
 	    if [ ! -d "$2" ]; then
-		    [ -e "$2" ] && rm "$2"
+		    rm "$2"
 		    mv "$1" "$2"
 	    else
 		    rsync -ax "$1/" "$2" \
