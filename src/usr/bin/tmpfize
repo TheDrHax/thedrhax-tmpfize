@@ -11,7 +11,7 @@ function get_name {
 
 # Logging
 function log {
-	[ $1 -le $pref_log_level ] && echo "$2"
+	[ $1 -le $pref_log_level ] && echo "$2" 1>&2
 }
 
 # Working with arrays: iterate '-{1}-{2}-' array(1 2) array(3 4) => -1-3- -2-4-
