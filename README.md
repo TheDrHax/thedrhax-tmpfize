@@ -33,8 +33,8 @@ Also you can uninstall tmpfize with ```sudo make uninstall```
 
 ### 3. Install from my APT repository
 ```
-echo "deb http://local.thedrhax.us.to/apt/stable/ /" | sudo tee "/etc/apt/sources.list.d/thedrhax.list"
-wget -O- http://local.thedrhax.us.to/apt/TheDrHax.key | sudo apt-key add -
+echo "deb http://local.thedrhax.pw/apt/stable/ /" | sudo tee "/etc/apt/sources.list.d/thedrhax.list"
+wget -O- http://local.thedrhax.pw/apt/TheDrHax.key | sudo apt-key add -
 sudo apt-get update
 sudo apt-get install thedrhax-tmpfize
 ```
